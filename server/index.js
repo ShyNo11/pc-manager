@@ -1,11 +1,29 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const PASSWORD = process.env.PASSWORD || '123456';
+const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+const tokens = new Set();
+
+function generateToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function authMiddleware(req, res, next) {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token || !tokens.has(token)) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+}
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -61,9 +79,30 @@ function broadcastStatus() {
     });
 }
 
+app.post('/api/login', (req, res) => {
+    const { password } = req.body;
+    if (password === PASSWORD) {
+        const token = generateToken();
+        tokens.add(token);
+        res.json({ success: true, token });
+    } else {
+        res.status(401).json({ error: 'Invalid password' });
+    }
+});
+
+app.post('/api/logout', (req, res) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) tokens.delete(token);
+    res.json({ success: true });
+});
+
 app.use(express.static('../web'));
 
-app.post('/api/device/:deviceId/command', (req, res) => {
+app.get('/api/check-auth', authMiddleware, (req, res) => {
+    res.json({ authenticated: true });
+});
+
+app.post('/api/device/:deviceId/command', authMiddleware, (req, res) => {
     const { deviceId } = req.params;
     const { command, params } = req.body;
     
@@ -76,7 +115,7 @@ app.post('/api/device/:deviceId/command', (req, res) => {
     res.json({ success: true, message: 'Command sent' });
 });
 
-app.get('/api/devices', (req, res) => {
+app.get('/api/devices', authMiddleware, (req, res) => {
     const devices = {};
     clients.forEach((client, deviceId) => {
         devices[deviceId] = {

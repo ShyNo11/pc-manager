@@ -26,21 +26,118 @@
         .time-input { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
         input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 80px; }
         select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .login-card { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .login-card h2 { text-align: center; margin-bottom: 20px; color: #333; }
+        .login-card input[type="password"] { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; font-size: 16px; }
+        .login-card button { width: 100%; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        .login-card button:hover { opacity: 0.9; }
+        .error { color: #f44336; text-align: center; margin-top: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .logout-btn { background: #ccc; color: #333; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>电脑监控系统</h1>
-        <div id="devices"></div>
+        <div id="login-page" style="display: none;">
+            <div class="login-card">
+                <h2>电脑监控系统</h2>
+                <input type="password" id="password" placeholder="请输入密码" onkeypress="if(event.key==='Enter')login()">
+                <button onclick="login()">登录</button>
+                <p class="error" id="login-error"></p>
+            </div>
+        </div>
+        <div id="main-page" style="display: none;">
+            <div class="header">
+                <h1>电脑监控系统</h1>
+                <button class="logout-btn" onclick="logout()">退出</button>
+            </div>
+            <div id="devices"></div>
+        </div>
     </div>
 
     <script>
         const API_URL = window.location.origin;
         let devices = {};
+        let token = localStorage.getItem('token');
+
+        async function checkAuth() {
+            if (!token) {
+                showLogin();
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/api/check-auth`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    showMain();
+                    loadDevices();
+                } else {
+                    localStorage.removeItem('token');
+                    token = null;
+                    showLogin();
+                }
+            } catch (e) {
+                showLogin();
+            }
+        }
+
+        function showLogin() {
+            document.getElementById('login-page').style.display = 'block';
+            document.getElementById('main-page').style.display = 'none';
+        }
+
+        function showMain() {
+            document.getElementById('login-page').style.display = 'none';
+            document.getElementById('main-page').style.display = 'block';
+        }
+
+        async function login() {
+            const password = document.getElementById('password').value;
+            const errorEl = document.getElementById('login-error');
+            errorEl.textContent = '';
+            
+            try {
+                const res = await fetch(`${API_URL}/api/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    token = data.token;
+                    localStorage.setItem('token', token);
+                    showMain();
+                    loadDevices();
+                } else {
+                    errorEl.textContent = data.error || '登录失败';
+                }
+            } catch (e) {
+                errorEl.textContent = '连接服务器失败';
+            }
+        }
+
+        function logout() {
+            fetch(`${API_URL}/api/logout`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).catch(() => {});
+            localStorage.removeItem('token');
+            token = null;
+            showLogin();
+        }
 
         async function loadDevices() {
             try {
-                const res = await fetch(`${API_URL}/api/devices`);
+                const res = await fetch(`${API_URL}/api/devices`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.status === 401) {
+                    localStorage.removeItem('token');
+                    token = null;
+                    showLogin();
+                    return;
+                }
                 devices = await res.json();
                 renderDevices();
             } catch (e) {
@@ -86,9 +183,15 @@
             try {
                 const res = await fetch(`${API_URL}/api/device/${deviceId}/command`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ command: 'shutdown', params: {} })
                 });
+                if (res.status === 401) {
+                    localStorage.removeItem('token');
+                    token = null;
+                    showLogin();
+                    return;
+                }
                 alert('关机指令已发送');
             } catch (e) {
                 alert('发送失败: ' + e.message);
@@ -105,17 +208,25 @@
             try {
                 const res = await fetch(`${API_URL}/api/device/${deviceId}/command`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ command: 'schedule_shutdown', params: { seconds } })
                 });
+                if (res.status === 401) {
+                    localStorage.removeItem('token');
+                    token = null;
+                    showLogin();
+                    return;
+                }
                 alert(`将在 ${minutes} ${unit === 60 ? '分钟' : '秒'} 后关机`);
             } catch (e) {
                 alert('发送失败: ' + e.message);
             }
         }
 
-        loadDevices();
-        setInterval(loadDevices, 5000);
+        checkAuth();
+        setInterval(() => {
+            if (token) loadDevices();
+        }, 5000);
     </script>
 </body>
 </html>
