@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电脑监控系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 20px; color: #333; }
+        .device-card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .device-name { font-size: 18px; font-weight: bold; }
+        .status { padding: 4px 12px; border-radius: 12px; font-size: 12px; }
+        .online { background: #4CAF50; color: white; }
+        .offline { background: #ccc; color: white; }
+        .device-info { color: #666; font-size: 14px; margin-bottom: 15px; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+        button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-danger { background: #f44336; color: white; }
+        .btn-warning { background: #ff9800; color: white; }
+        .btn-primary { background: #2196F3; color: white; }
+        button:hover { opacity: 0.8; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .time-input { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+        input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 80px; }
+        select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>电脑监控系统</h1>
+        <div id="devices"></div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        let devices = {};
+
+        async function loadDevices() {
+            try {
+                const res = await fetch(`${API_URL}/api/devices`);
+                devices = await res.json();
+                renderDevices();
+            } catch (e) {
+                console.error('Failed to load devices:', e);
+            }
+        }
+
+        function renderDevices() {
+            const container = document.getElementById('devices');
+            
+            if (Object.keys(devices).length === 0) {
+                container.innerHTML = '<div class="device-card"><p style="text-align:center;color:#999;">暂无在线设备</p></div>';
+                return;
+            }
+
+            container.innerHTML = Object.entries(devices).map(([id, device]) => `
+                <div class="device-card">
+                    <div class="device-header">
+                        <span class="device-name">${device.hostname || id}</span>
+                        <span class="status online">在线</span>
+                    </div>
+                    <div class="device-info">
+                        系统: ${device.os || '未知'} | ID: ${id}
+                    </div>
+                    <div class="controls">
+                        <button class="btn-danger" onclick="shutdown('${id}')">立即关机</button>
+                        <button class="btn-warning" onclick="scheduleShutdown('${id}')">定时关机</button>
+                    </div>
+                    <div class="time-input">
+                        <input type="number" id="time-${id}" value="30" min="1" max="1440">
+                        <select id="unit-${id}">
+                            <option value="60">分钟后关机</option>
+                            <option value="1">秒后关机</option>
+                        </select>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function shutdown(deviceId) {
+            if (!confirm('确定要立即关机吗？')) return;
+            
+            try {
+                const res = await fetch(`${API_URL}/api/device/${deviceId}/command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'shutdown', params: {} })
+                });
+                alert('关机指令已发送');
+            } catch (e) {
+                alert('发送失败: ' + e.message);
+            }
+        }
+
+        async function scheduleShutdown(deviceId) {
+            const timeInput = document.getElementById(`time-${deviceId}`);
+            const unitSelect = document.getElementById(`unit-${deviceId}`);
+            const minutes = parseInt(timeInput.value) || 30;
+            const unit = parseInt(unitSelect.value);
+            const seconds = minutes * unit;
+            
+            try {
+                const res = await fetch(`${API_URL}/api/device/${deviceId}/command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'schedule_shutdown', params: { seconds } })
+                });
+                alert(`将在 ${minutes} ${unit === 60 ? '分钟' : '秒'} 后关机`);
+            } catch (e) {
+                alert('发送失败: ' + e.message);
+            }
+        }
+
+        loadDevices();
+        setInterval(loadDevices, 5000);
+    </script>
+</body>
+</html>
