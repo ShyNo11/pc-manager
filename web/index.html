@@ -59,6 +59,7 @@
         const API_URL = window.location.origin;
         let devices = {};
         let token = localStorage.getItem('token');
+        let timeValues = {};
 
         async function checkAuth() {
             if (!token) {
@@ -167,14 +168,20 @@
                         <button class="btn-warning" onclick="scheduleShutdown('${id}')">定时关机</button>
                     </div>
                     <div class="time-input">
-                        <input type="number" id="time-${id}" value="30" min="1" max="1440">
-                        <select id="unit-${id}">
-                            <option value="60">分钟后关机</option>
-                            <option value="1">秒后关机</option>
-                        </select>
+                        <input type="number" id="time-${id}" value="${timeValues[id] || 30}" min="1" max="1440">
+                        <span>分钟后关机</span>
                     </div>
                 </div>
             `).join('');
+
+            Object.keys(devices).forEach(id => {
+                const input = document.getElementById(`time-${id}`);
+                if (input) {
+                    input.addEventListener('input', () => {
+                        timeValues[id] = input.value;
+                    });
+                }
+            });
         }
 
         async function shutdown(deviceId) {
@@ -200,10 +207,8 @@
 
         async function scheduleShutdown(deviceId) {
             const timeInput = document.getElementById(`time-${deviceId}`);
-            const unitSelect = document.getElementById(`unit-${deviceId}`);
             const minutes = parseInt(timeInput.value) || 30;
-            const unit = parseInt(unitSelect.value);
-            const seconds = minutes * unit;
+            const seconds = minutes * 60;
             
             try {
                 const res = await fetch(`${API_URL}/api/device/${deviceId}/command`, {
@@ -217,7 +222,7 @@
                     showLogin();
                     return;
                 }
-                alert(`将在 ${minutes} ${unit === 60 ? '分钟' : '秒'} 后关机`);
+                alert(`将在 ${minutes} 分钟后关机`);
             } catch (e) {
                 alert('发送失败: ' + e.message);
             }
